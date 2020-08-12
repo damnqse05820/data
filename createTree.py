@@ -7,8 +7,8 @@ def Tree(nodelist):
     children = 'children'
 
     for child, parent in nodelist:
-        pguid = child['process']['entity_id']
-        parent_pguid = parent['process']['entity_id']
+        pguid = child['_source']['process']['entity_id']
+        parent_pguid = parent['_source']['process']['entity_id']
         if not pguid in nodes:
             node = {infor:child}
             nodes[pguid] = node

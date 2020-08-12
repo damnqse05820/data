@@ -5,7 +5,7 @@ import json
 import collections
 import createTree
 import time
-import threading
+
 
 try:
     client = Elasticsearch(config.ELASTICSEARCH_URL)
@@ -107,10 +107,10 @@ def check_data(data):
 #print(type(node))
 def checkguid(process,children):
   for i in range(len(children)):
-    if process['_source']['process']['entity_id'] == children[i]['process']['entity_id'] and "parent" in process['_source']['process'].keys():
+    if process['_source']['process']['entity_id'] == children[i]['_source']['process']['entity_id'] and "parent" in process['_source']['process'].keys():
       del children[i]
       return True
-    elif process['_source']['process']['entity_id'] == children[i]['process']['entity_id'] and not "parent" in process['_source']['process'].keys():
+    elif process['_source']['process']['entity_id'] == children[i]['_source']['process']['entity_id'] and not "parent" in process['_source']['process'].keys():
       return False
   return True
 
@@ -148,20 +148,20 @@ def search_parent_child_process(computername,pguid,mode):
 })
   data = client.search(index = "winlogbeat-*",body = query)
   if len(data['hits']['hits']) > 0:
-    children=[data['hits']['hits'][0]['_source']]
+    children=[data['hits']['hits'][0]]
   else:
     return []
   for process in data['hits']['hits']:
     if checkguid(process,children):
-        children.append(process['_source'])
+        children.append(process)
   return children
 
 def find_root(process):
   rootprocess = process
   while True:
-    if 'parent' in rootprocess['process'].keys(): 
-      computername = rootprocess['host']['hostname']
-      pguid = rootprocess['process']['parent']['entity_id']
+    if 'parent' in rootprocess['_source']['process'].keys(): 
+      computername = rootprocess['_source']['host']['hostname']
+      pguid = rootprocess['_source']['process']['parent']['entity_id']
       parent = search_parent_child_process(computername,pguid,1)
       if parent:
         rootprocess = parent[0]
@@ -179,8 +179,8 @@ def dict_tree_process(process_str):
   queue = [root]
   while len(queue) > 0:
     parent = queue.pop(0)
-    computername = parent['host']['hostname']
-    pguid = parent['process']['entity_id']
+    computername = parent['_source']['host']['hostname']
+    pguid = parent['_source']['process']['entity_id']
     childr = search_parent_child_process(computername,pguid,0)
     for child in childr:
       queue.append(child)
@@ -189,7 +189,7 @@ def dict_tree_process(process_str):
   if len(tree_node) == 0:
     return [{"infor":root}]
   tree = createTree.Tree(list(reversed(tree_node)))
-  return tree[root['process']['entity_id']] 
+  return tree[root['_source']['process']['entity_id']] 
 
 def detail(computer_name):
   query =  json.dumps({
