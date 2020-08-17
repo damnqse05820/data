@@ -1,37 +1,34 @@
-from elasticsearch import Elasticsearch
+
 import config
-from pymongo import MongoClient
+
 import json
 import collections
 import createTree
 import time
+import connection
 
 
-try:
-    client = Elasticsearch(config.ELASTICSEARCH_URL)
-    mongo = MongoClient(config.MONGO_CONECTION)
-    users_db = mongo.Users
-    users_collection = users_db['user']
 
-except Exception as err:
-    print ("Elasticsearch client ERROR:", err)
+client = connection.ESconnection
+mongo = connection.mongoconnection
+users_db = mongo.Users
+users_collection = users_db['user']
+
 
 
 def get_all():
   all_users = []
   users = users_collection.find({})
   for user in users:
-    username = user['host']['name']
-    status = 0
-    all_users.append({"computer_name":username,"status":status})
+    username = user['name']
+    all_users.append({"computer_name":username,"status":0,"malicious": 0})
   return all_users
 
 def add_db(newuser):
   users_collection.insert_one(newuser).inserted_id
 
 
-def realTime():
-   
+def realTime(): 
   hostnames = get_all()
   time_end = int(time.time())
   time_start = time_end - 60
@@ -47,28 +44,47 @@ def realTime():
                   }}
               }]
           }
-    }, "_source": "host"
+    },"size":1000
 })
-  
   data = client.search(index = "winlogbeat-*",body = query)
   for hostname in data['hits']['hits']:
-    host = hostname['_source']['host']['hostname']
-    flag, index = checkhostname(host, hostnames)
-    if flag and index != -1:
-      hostnames[index]["status"] = 1 
-    elif flag and index == -1:
-      hostnames.append({"computer_name":host,"status":1})
-      add_db(hostname['_source'])
+    host = hostname['_source']
+    checkhostname(host, hostnames)
   data =json.dumps({'data':hostnames})
-  yield 'data : %s\n\n'%data
+  yield 'data:%s\n\n'%data
 
 def checkhostname(hostname, hostnames):
   for i in range(len(hostnames)):
-    if hostname == hostnames[i]['computer_name'] and hostnames[i]['status'] == 1:
-      return False ,-1
-    if hostname == hostnames[i]['computer_name'] and  hostnames[i]['status'] == 0:
-      return True, i
-  return True, -1
+    computer_name = hostnames[i]['computer_name']
+    computer_status = hostnames[i]['status']
+    if hostname['host']['hostname'] == computer_name and computer_status == 1 and hostnames[i]["malicious"] == 1:
+      return
+    if hostname['host']['hostname'] == computer_name and computer_status == 1 :
+      if 'hash_detect' in hostname.keys():
+        if hostname['hash_detect']['result']['status']=='malicious':
+          hostnames[i]["malicious"] = 1
+      if 'mitre_detect' in hostname.keys():
+        if hostname['mitre_detect']['mitre-detected'] == '1':
+          hostnames[i]["malicious"] = 1
+      return
+    if hostname['host']['hostname'] == computer_name and  hostnames[i]['status'] == 0:
+      hostnames[i]["status"] = 1
+      if 'hash_detect' in hostname.keys():
+        if hostname['hash_detect']['result']['status']=='malicious':
+          hostnames[i]["malicious"] = 1
+      if 'mitre_detect' in hostname.keys():
+        if hostname['mitre_detect']['mitre-detected'] == '1':
+          hostnames[i]["malicious"] = 1
+      return
+  hostnames.append({"computer_name":hostname['host']['hostname'],"status":1,"malicious":0})
+  add_db(hostname['host'])
+  if 'hash_detect' in hostname.keys():
+    if hostname['hash_detect']['result']['status']=='malicious':
+      hostnames[i]["malicious"] = 1
+  if 'mitre_detect' in hostname.keys():
+    if hostname['mitre_detect']['mitre-detected'] == 1:
+      hostnames[i]["malicious"] = 1
+
 
 def query_search(time_start, time_end):
     query = json.dumps({
@@ -103,8 +119,6 @@ def check_data(data):
       dataremove.append(i)
   return dataremove
 
-#node = query_search("1593478454000","1593482474000")[2]
-#print(type(node))
 def checkguid(process,children):
   for i in range(len(children)):
     if process['_source']['process']['entity_id'] == children[i]['_source']['process']['entity_id'] and "parent" in process['_source']['process'].keys():
@@ -171,7 +185,7 @@ def find_root(process):
       return rootprocess
 
 def dict_tree_process(process_str):
-  process = search_parent_child_process(process_str['computername'],process_str['puid'],1)
+  process = search_parent_child_process(process_str['computer_name'],process_str['guid'],1)
   if len(process) == 0:
     return 
   tree_node = []
