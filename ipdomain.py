@@ -71,6 +71,8 @@ def checkIpDomain(obj,mode):
         result = search_db(obj,mode)
         if result == None:
             result = getipdomain(obj,mode)
+            if result == None:
+                return "Not Found"
             add_db(result,mode)
         add_redis(result, mode)
     return result
