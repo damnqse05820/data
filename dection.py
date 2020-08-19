@@ -122,6 +122,13 @@ def check_data(data):
 def checkguid(process,children):
   for i in range(len(children)):
     if process['_source']['process']['entity_id'] == children[i]['_source']['process']['entity_id'] and "parent" in process['_source']['process'].keys():
+      try:
+        if children[i]['_source']['mitre_detect']['mitre-detected'] == 1 :
+          return False
+        if children[i]['_source']['hash_detect']['result']['status'] == 'malicious':
+          return False
+      except:
+        pass
       del children[i]
       return True
     elif process['_source']['process']['entity_id'] == children[i]['_source']['process']['entity_id'] and not "parent" in process['_source']['process'].keys():
